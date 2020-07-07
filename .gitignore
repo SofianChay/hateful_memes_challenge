@@ -1,0 +1,7 @@
+cocoapi/
+data/
+detectron/
+detectron2/
+image_features/
+mmf/
+saved_models/
