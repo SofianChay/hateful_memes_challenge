@@ -2,6 +2,9 @@ cocoapi/
 data/
 detectron/
 detectron2/
-image_features/
+torchvision/
+bottom_up/
+bertweet/
+bottom-up-features/
 mmf/
 saved_models/
