@@ -16,7 +16,7 @@ change extract_features_bottom_up.py script by this one
 ```
 cd bottom-up-features
 python extract_bottom_up_features.py
-``
+```
 
 ## ensemble models
 ```
@@ -26,5 +26,6 @@ python run.py
 ## create submission
 ```
 python create_submission.py
-``
+```
+
 
