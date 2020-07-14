@@ -9,11 +9,17 @@ from tqdm import tqdm
 import argparse
 
 from model import MyVisualBert
+# from bertweet.model.model import VisualBerTweet
 from dataset import create
 
 from time import gmtime, strftime
 import os 
 import jsonlines
+import pickle 
+
+os.environ['OC_DISABLE_DOT_ACCESS_WARNING'] = "1"
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
 
 def training_step(optimizer, train_dataloader, model, criterion, scheduler, device):
     loss = 0
@@ -37,7 +43,6 @@ def training_step(optimizer, train_dataloader, model, criterion, scheduler, devi
 def test(model, dev_dataloader):
     print("validation ...")
     device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
-    # model = model.to(device)
     model.eval()
     num_examples = 0
     confidences = []
@@ -70,7 +75,7 @@ def train(train_dataloader, dev_dataloader, model, lr, num_epochs):
     total_steps = num_epochs * len(train_dataloader) 
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
     criterion = nn.CrossEntropyLoss()
-    
+
     for epoch in range(num_epochs):
         print(f"fine tuning step : {epoch + 1}")
         loss = training_step(optimizer, train_dataloader, model, criterion, scheduler, device)
@@ -92,13 +97,13 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default=6, type=int)
     parser.add_argument('--train_batch_size', default=16, type=int)
     parser.add_argument('--dev_batch_size', default=32, type=int)
+    parser.add_argument('--num_models', default=12, type=int)
+    parser.add_argument('--images_features', default='detectron')
 
     args = parser.parse_args()
 
     setattr(args, 'model_time', strftime('%H:%M:%S', gmtime()))
 
-    model = MyVisualBert()
-    # model.load_state_dict(torch.load('saved_models/23:19:15.pt'))
     train_set = []
     with jsonlines.open('data/train.jsonl', 'r') as f:
       for line in f: 
@@ -110,15 +115,24 @@ if __name__ == '__main__':
         dev_set.append(line)
 
     print('building dataloaders ...')
-    train_dataloader = create(data=train_set, datatype='train', batch_size=args.train_batch_size)
-    dev_dataloader = create(data=dev_set, datatype='dev', batch_size=args.dev_batch_size)
+    with open(f'{args.images_features}/images_features_dict.pkl', 'rb') as f:
+      images_features_dict = pickle.load(f)
+    print("train set")
+    train_dataloader = create(data=train_set, datatype='train', batch_size=args.train_batch_size, images_features_dict=images_features_dict)
+    print("dev set")
+    dev_dataloader = create(data=dev_set, datatype='dev', batch_size=args.dev_batch_size, images_features_dict=images_features_dict)
     print('done !')
-    # print(test(model, dev_dataloader))
 
-    best_model = train(train_dataloader, dev_dataloader, model, args.lr, args.epochs)
+    scores = []
+    for i in range(args.num_models):
+        print(f"model {i}")
+        model = MyVisualBert()
+        best_model, auc = train(train_dataloader, dev_dataloader, model, args.lr, args.epochs)
+        scores.append(auc)
+        if not os.path.exists('saved_models'):
+            os.makedirs('saved_models')
+        
+        torch.save(best_model, f'saved_models/ensemble_{i}.pt')
+        print('model saved !')
 
-    if not os.path.exists('saved_models'):
-        os.makedirs('saved_models')
-    
-    torch.save(best_model, f'saved_models/{args.model_time}.pt')
-    print('model saved !')
+    print(f"mean auc : {np.mean(scores)}")

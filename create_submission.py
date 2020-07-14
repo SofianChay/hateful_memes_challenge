@@ -42,17 +42,17 @@ if __name__ == '__main__':
     test_dataloader = create(data=test_set, datatype='test', batch_size=32)
     
     for filename in os.listdir('saved_models'):
-        if 'cross_val' in filename:
+        if 'ensemble' in filename and 'ter' in filename:
           model = MyVisualBert()
           model.load_state_dict(torch.load(f'saved_models/{filename}'))
           ids, confidences, _ = write_submission(model, test_dataloader)
           list_confidences.append(confidences)
     
     confidences = np.mean(list_confidences, axis=0)
-    labels = (confidences >= .5).astype(int)
+    labels = (confidences >= .4).astype(int)
 
     df = pd.DataFrame({'id': ids, 'proba': confidences, 'label': labels})
-    df.to_csv('submission_with_cross_val.csv', index=False)
+    df.to_csv('new_features.csv', index=False)
 
 
 

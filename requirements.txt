@@ -8,3 +8,8 @@ pip install --editable .
 
 pytorch and torchvision: 
 pip install torch==1.5.0+cu101 torchvision==0.6.0+cu101 -f https://download.pytorch.org/whl/torch_stable.html
+
+detectron :
+python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
+
+pour bottom-up voir le git (requiert cuda9.2/ torch 0.4.1 et torchvision)
