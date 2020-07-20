@@ -66,17 +66,27 @@ def create(data, datatype, batch_size, images_features_dict):
         # inputs = vocab.encode_line(subwords, append_eos=False, add_if_not_exist=False).long().tolist()
         max_len = max(max_len, len(inputs))
         input_ids.append(inputs)
+        if datatype == 'train':
+            input_ids.append([101, 102, 102])
         attention_masks.append([1] * len(inputs))
+        if datatype == 'train':
+            attention_masks.append([1] * 3)
         ids.append(elt['id'])
+        if datatype == 'train':
+            ids.append(-1)
         if datatype == 'test':
             labels.append(-1)
         else:
             labels.append(elt['label'])
+            if datatype == 'train':
+                labels.append(elt['label'])
     print(f'maximum meme text length : {max_len}')
 
     images_features_list = []
     for elt in data:
       images_features_list.append(images_features_dict[elt['id']])
+      if datatype == 'train':
+          images_features_list.append(images_features_dict[elt['id']])
 
     max_len_features = max([len(features) for features in images_features_list])
     attention_masks_images = []
@@ -85,7 +95,7 @@ def create(data, datatype, batch_size, images_features_dict):
         attention_masks_images.append([1] * len(images_features_list[i]) + [0] * (max_len_features  - len(images_features_list[i])))
         images_features_list[i] = torch.cat((images_features_list[i], torch.zeros((max_len_features - len(images_features_list[i]), 2048))), dim=0)
 
-    for i in range(len(data)):
+    for i in range(len(images_features_list)):
         input_ids[i] += [config.pad_token_id] * (max_len - len(input_ids[i]))
         attention_masks[i] += [0] * (max_len - len(attention_masks[i])) + attention_masks_images[i]
 
