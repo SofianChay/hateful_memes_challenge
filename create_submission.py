@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 import os 
 import argparse 
-from utils.model import MyVisualBert
+from utils.model import MyVisualBert, RobertaClassif
 from tqdm import tqdm
 from utils.dataset import create 
 import numpy as np
@@ -11,7 +11,7 @@ import jsonlines
 from run import training_step, map_losses
 from utils.losses import FocalLoss, MarginFocalLoss, RocStar
 from torch import nn, optim
-from transformers import get_linear_schedule_with_warmup
+from transformers import get_linear_schedule_with_warmup, BertConfig, BertTokenizer, RobertaConfig, RobertaTokenizer
 import torch
 import pickle 
 import bottom_up
@@ -33,7 +33,7 @@ def write_submission(model, test_dataloader):
             confidences += logits.cpu().tolist()
             # labels += probs.max(dim=1)[1].cpu().tolist()
             labels += (probs >= .4).cpu().tolist()
-            ids += batch[4].tolist()
+            ids += batch[-1].tolist()
     
     return ids, confidences, labels
 
@@ -44,6 +44,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--features', default='mask_rcnn_features')
     parser.add_argument('--loss', default='margin')
+    parser.add_argument('--weight_visualbert', default=.9)
     
     args = parser.parse_args()
     models = [] 
@@ -59,50 +60,61 @@ if __name__ == '__main__':
       for line in f: 
         dev_set.append(line)
 
+    print("preparing visualbert inferences ...")
     print('building dataloaders ...')
+    tkz = BertTokenizer.from_pretrained('bert-base-uncased')
+    config = BertConfig.from_pretrained('bert-base-uncased')
     with open(f'{args.features}/images_features_dict.pkl', 'rb') as f:
       images_features_dict = pickle.load(f)
-    test_dataloader = create(data=test_set, datatype='test', batch_size=32, images_features_dict=images_features_dict)
-    dev_dataloader = create(data=dev_set, datatype='dev', batch_size=16, images_features_dict=images_features_dict)
+    test_dataloader = create(data=test_set, datatype='test', batch_size=32, images_features_dict=images_features_dict, tkz=tkz, config=config)
+    dev_dataloader = create(data=dev_set, datatype='dev', batch_size=16, images_features_dict=images_features_dict, tkz=tkz, config=config)
     print('done !')
 
     for filename in os.listdir('saved_models'):
-        if 'ensemble' in filename:
+        if 'ensemble' in filename and 'visualbert' in filename:
           model = MyVisualBert()
           model.load_state_dict(torch.load(f'saved_models/{filename}'))
           # finetune on the dev set for one epoch 
           optimizer = optim.AdamW(model.parameters(), lr=1e-5, eps=1e-8)
-          total_steps = 2 * len(dev_dataloader) 
+          total_steps = 3 * len(dev_dataloader) 
           scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
           criterion = map_losses[args.loss]()
           device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
           model = model.to(device)
           
           training_step(0, optimizer, dev_dataloader, model, criterion, scheduler, device, args.loss)
+          training_step(0, optimizer, dev_dataloader, model, criterion, scheduler, device, args.loss)
+          training_step(0, optimizer, dev_dataloader, model, criterion, scheduler, device, args.loss)
 
           ids, confidences, _ = write_submission(model, test_dataloader)
           list_confidences.append(confidences)
     
-    confidences = np.mean(list_confidences, axis=0)
-    confidences = torch.sigmoid(torch.tensor(confidences)).numpy()
-    # list_confidences = np.transpose(list_confidences)
-    # confidences = np.zeros(list_confidences.shape[0])
-    # for i, elt in enumerate(list_confidences):
-      
-    #     if all(c < .3 for c in elt):
-    #         confidences[i] = np.min(elt)
-    #     elif all(c > .7 for c in elt):
-    #         confidences[i] = np.max(elt)
-    #     else:
-    #         confidences[i] = np.mean(elt)
+    confidences_visualbert = np.mean(list_confidences, axis=0)
+    confidences_visualbert = torch.sigmoid(torch.tensor(confidences)).numpy()
 
+    print("preparing roberta inferences ...")
+
+    print('building dataloaders ...')
+    tkz = RobertaTokenizer.from_pretrained('roberta-base')
+    config = RobertaConfig.from_pretrained('roberta-base')
+    test_dataloader = create(data=test_set, datatype='test', batch_size=32, images_features_dict=None, tkz=tkz, config=config)
+    print('done !')
+
+    for filename in os.listdir('saved_models'):
+        if 'ensemble' in filename and 'roberta' in filename:
+          model = RobertaClassif()
+          model.load_state_dict(torch.load(f'saved_models/{filename}'))
+          device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+          model = model.to(device)
+
+          ids, confidences, _ = write_submission(model, test_dataloader)
+          list_confidences.append(confidences)
+    
+    confidences_roberta = np.mean(list_confidences, axis=0)
+    confidences_roberta = torch.sigmoid(torch.tensor(confidences)).numpy()
+
+    confidences = args.weight_visualbert * confidences_visualbert + (1 - args.weight_visualbert) * confidences_roberta
     labels = (confidences >= .5).astype(int)
 
     df = pd.DataFrame({'id': ids, 'proba': confidences, 'label': labels})
     df.to_csv('new_features.csv', index=False)
-
-
-
-
-
-
