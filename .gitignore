@@ -8,3 +8,7 @@ bertweet/
 bottom-up-features/
 mmf/
 saved_models/
+*.cpython*
+images_features_dict.pkl
+settings.json
+submission.csv

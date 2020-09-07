@@ -2,7 +2,7 @@ import jsonlines
 import pickle
 from dataset import dataset
 import os
-from model.visualbert import MyVisualBert
+from model.visualbert import MyVisualBert, VisualBertWithPooler
 import torch
 from model import engine
 import numpy as np
@@ -18,7 +18,7 @@ if __name__ == '__main__':
         for line in f:
             test_set.append(line)
     print('building dataloaders ...')
-    with open(f'bottom_up/images_features_dict.pkl', 'rb') as f:
+    with open(f'mask_rcnn_features/images_features_dict.pkl', 'rb') as f:
         images_features_dict = pickle.load(f)
     test_dataloader = dataset.create(data=test_set, datatype='test',
                                      batch_size=32, images_features_dict=images_features_dict)
@@ -28,7 +28,7 @@ if __name__ == '__main__':
     print(f'Working on {device}')
     all_preds = []
     for filename in os.listdir('saved_models'):
-        model = MyVisualBert()
+        model = VisualBertWithPooler()
         model.to(device)
         model.load_state_dict(torch.load(f'saved_models/{filename}'))
         ids, predictions = engine.predict(test_dataloader, model, device)
